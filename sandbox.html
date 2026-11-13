@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Republic Turntable</title>
+<style>
+  :root { --fg: #ece9e3; --dim: #85817a; --line: rgba(255,255,255,.1); --panel: rgba(12,12,13,.78); --acc: #ece9e3; --mono: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #030304; color: var(--fg); font: 12px/1.45 ui-sans-serif, system-ui, -apple-system, "Helvetica Neue", sans-serif; overflow: hidden; -webkit-font-smoothing: antialiased; }
+  #gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; opacity: 0; transition: opacity .6s ease-out; }
+  .ready #gl { opacity: 1; }
+  #vig { position: fixed; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 50% 46%, transparent 42%, rgba(0,0,0,.6) 100%); }
+  #leaks { position: fixed; inset: 0; pointer-events: none; z-index: 9; background: url(assets/light-leaks.png) center / cover no-repeat; mix-blend-mode: difference; }   /* texture over everything, as in the Figma slide */
+  #brand { position: fixed; top: 16px; left: 18px; z-index: 6; display: flex; flex-direction: column; gap: 6px; }
+  #brand img { height: 13px; width: auto; mix-blend-mode: screen; }
+  #brand p { margin: 0; color: var(--dim); max-width: 260px; }
+  #toggles { position: fixed; top: 12px; right: 14px; display: flex; gap: 2px; z-index: 6; }
+  #toggles button { all: unset; cursor: pointer; padding: 5px 10px; border-radius: 999px; color: var(--dim); }
+  #toggles button:hover, #toggles button[aria-pressed=true] { color: var(--fg); }
+  #toggles button[aria-pressed=true] { background: rgba(255,255,255,.09); }
+  #toggles button[hidden] { display: none; }
+  #foot { position: fixed; left: 18px; bottom: 14px; display: flex; gap: 16px; color: var(--dim); font: 11px var(--mono); font-variant-numeric: tabular-nums; pointer-events: none; z-index: 6; }
+  #foot b { color: var(--fg); font-weight: 400; }
+  #help { position: fixed; right: 18px; bottom: 14px; color: var(--dim); z-index: 6; text-align: right; }
+  #credit { position: fixed; left: 18px; bottom: 32px; color: var(--dim); font-size: 10px; z-index: 6; opacity: .7; }
+  #credit a { color: inherit; }
+  .panel { position: fixed; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; backdrop-filter: blur(16px); padding: 14px; z-index: 4; }
+  #ctl { top: 46px; right: 14px; width: 220px; }
+  .row { display: flex; gap: 6px; margin: 5px 0; }
+  #ctl button { font: inherit; color: var(--fg); background: rgba(255,255,255,.06); border: 1px solid var(--line); border-radius: 7px; padding: 5px 8px; cursor: pointer; flex: 1; }
+  #ctl button:hover { background: rgba(255,255,255,.12); }
+  #ctl button.on { background: var(--acc); color: #0b0b0c; border-color: transparent; }
+  #power { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,.28); z-index: 5; pointer-events: none; }
+  #power[hidden] { display: none; }
+  #power span { pointer-events: auto; cursor: pointer; padding: 9px 18px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); backdrop-filter: blur(10px); letter-spacing: .12em; text-transform: uppercase; font-size: 11px; }
+  #gizmo { position: fixed; right: 14px; bottom: 44px; width: 116px; height: 116px; z-index: 6; cursor: pointer; border-radius: 50%; }
+  #gizmo:hover { background: rgba(255,255,255,.04); }
+  .view h4 { margin: 12px 0 6px; font-size: 10px; font-weight: 500; color: var(--dim); letter-spacing: .14em; text-transform: uppercase; }
+  .xyz { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+  .xyz label { display: flex; align-items: center; gap: 5px; background: rgba(255,255,255,.05); border: 1px solid var(--line); border-radius: 7px; padding: 3px 6px; cursor: ew-resize; }
+  .xyz label b { font: 600 10px var(--mono); }
+  .xyz input { all: unset; width: 100%; font: 11px var(--mono); color: var(--fg); text-align: right; cursor: text; }
+  .ax-x { color: #ff5a5a; } .ax-y { color: #7bdc65; } .ax-z { color: #5aa2ff; } .ax-o { color: var(--dim); }
+  #help { bottom: 14px; }
+  @media (max-width: 640px) { #help { display: none; } }
+  /* Hide UI: only the record and its lighting; H (or Esc) toggles back */
+  html.bare #brand, html.bare #toggles, html.bare #ctl, html.bare #foot, html.bare #credit, html.bare #help, html.bare #gizmo, html.bare #power { display: none !important; }
+  html.bare, html.bare * { cursor: none; } html.bare.cur, html.bare.cur * { cursor: auto; }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div id="vig"></div>
+<div id="leaks"></div>
+
+<header id="brand">
+  <img src="assets/republic-wordmark.png" alt="Republic">
+  <p>A turntable, drawn from the groove up. Grab the arm, drop the needle, spin the record.</p>
+</header>
+
+<nav id="toggles">
+  <button id="t-reset" hidden>Reset view</button>
+  <button id="t-ctl" aria-pressed="false">Controls</button>
+  <button id="t-hide" title="Hide all controls (H brings them back)">Hide UI</button>
+</nav>
+
+<section id="ctl" class="panel" hidden>
+  <div class="row"><button id="b-start">Start</button><button id="b-cue">Cue</button><button id="b-rest">Rest</button></div>
+  <div class="row"><button data-rpm="33.3333" class="on">33</button><button data-rpm="45">45</button><button data-rpm="78.26">78</button></div>
+</section>
+
+<div id="foot"><span><b id="s-rpm">0.0</b> rpm</span><span>r <b id="s-r">-</b></span><span id="now"></span></div>
+<div id="credit">Deck renderer adapted from <a href="https://github.com/rauchg/vinyl" target="_blank" rel="noopener">rauchg/vinyl</a> (MIT)</div>
+<div id="help">drag: orbit &nbsp;·&nbsp; right-drag / shift: pan &nbsp;·&nbsp; scroll: zoom &nbsp;·&nbsp; double-click: focus &nbsp;·&nbsp; Z: stylus &nbsp;·&nbsp; space: start/stop &nbsp;·&nbsp; 1 3 7 9: front / side / top / back</div>
+
+<canvas id="gizmo" width="232" height="232" title="Click an axis to snap the view, drag to orbit"></canvas>
+<div id="power"><span>Start the record</span></div>
+<script type="module" src="src/main.js"></script>
+<script>
+{ const r = document.documentElement, set = (on) => r.classList.toggle('bare', on);
+  document.getElementById('t-hide').addEventListener('click', (e) => { e.stopPropagation(); set(true); });
+  addEventListener('keydown', (e) => { if (e.key === 'h' || e.key === 'H') set(!r.classList.contains('bare')); else if (e.key === 'Escape') set(false); });
+  let t; addEventListener('pointermove', () => { r.classList.add('cur'); clearTimeout(t); t = setTimeout(() => r.classList.remove('cur'), 1500); });   // cursor hides when still
+}
+</script>
+</body>
+</html>
