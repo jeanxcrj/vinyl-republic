@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Republic Labs</title>
+<meta name="description" content="Republic Labs: reinventing the fan relationship. 2027–2030, monetize audiences.">
+<meta property="og:title" content="Republic Labs: Reinventing the Fan Relationship">
+<meta property="og:description" content="2027–2030 · Monetize audiences">
+<meta property="og:image" content="https://vinyl-republic.vercel.app/assets/og.jpg">
+<meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta property="og:url" content="https://vinyl-republic.vercel.app/">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://vinyl-republic.vercel.app/assets/og.jpg">
+<link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=general-sans@300,400,500,600,700&f[]=satoshi@400,500&display=swap">
+<style>
+  /* Interactive deck. Every slide is laid out on a 1920 x 1080 stage (Figma px) that scales to fit the window.
+     The turntable is one live WebGL canvas shared by all slides; each slide gives it a camera pose. */
+  :root { --ink: #f5f5f5; --sans: "General Sans", ui-sans-serif, system-ui, sans-serif; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; -webkit-font-smoothing: antialiased; }
+  #stage { position: absolute; left: 50%; top: 50%; width: 1920px; height: 1080px; transform-origin: 50% 50%; transform: translate(-50%, -50%); background: #111; overflow: hidden; font-family: var(--sans); color: var(--ink); }
+  .abs { position: absolute; }
+
+  /* backdrop, in Figma layer order */
+  #desk { left: -255px; top: -30px; width: 2198px; height: 1232px; object-fit: cover; }                 /* republic-desk-paper 1 */
+  #leak { left: 0; top: 0; width: 1920px; height: 1080px; opacity: .4; mix-blend-mode: difference; pointer-events: none; z-index: 5; }   /* Group 2: light leaks, 40%, difference, now on top of everything */
+  #frost { left: 423px; top: -320px; width: 3800px; height: 1928px; background: rgba(0,0,0,.01); pointer-events: none;   /* Rectangle 1: background blur 10, layer blur 30 (soft left edge) */
+    -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+    -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 30px); mask-image: linear-gradient(90deg, transparent 0, #000 30px); }
+  #haze { left: 399px; top: -320px; width: 3800px; height: 1928px; background: rgba(0,0,0,.6); filter: blur(250px); pointer-events: none; }   /* Rectangle 2: black 60%, layer blur 500, over the turntable */
+
+  #dim { left: 0; top: 0; width: 1920px; height: 1080px; background: #000; opacity: 0; pointer-events: none; transition: opacity 1.6s cubic-bezier(.45,0,.25,1); }
+  #corner { left: 0; top: 0; width: 1920px; height: 1080px; pointer-events: none; opacity: 0; transition: opacity 1.6s cubic-bezier(.45,0,.25,1);
+    background: radial-gradient(120% 130% at 100% 100%, rgba(0,0,0,1) 0%, rgba(0,0,0,.97) 30%, rgba(0,0,0,.8) 50%, rgba(0,0,0,.4) 72%, rgba(0,0,0,0) 92%); }   /* strong enough to hide the deck's nameplate on the cover */   /* soft black from the bottom right, behind the text */
+  #stage[data-slide="cover"] #corner, #stage[data-slide="play"] #corner { opacity: 1; }   /* also behind "Identify the fan" for contrast */
+  #stage[data-slide="cover"] #dim { opacity: .2; }  /* cover: 20% black over the scene, under the text */
+  #stage[data-slide="play"] #dim { opacity: .3; }   /* Figma 1:123: 30% black over the scene */
+  #frost, #haze { transition: opacity 1.8s cubic-bezier(.45,0,.25,1); transition-delay: var(--fog-in, 0s); }
+  #stage:not(.desk) #frost, #stage:not(.desk) #haze { transition-delay: 0s; }   /* leave at once, return late */
+  #stage:not(.desk) #frost, #stage:not(.desk) #haze { opacity: 0; }   /* frosted paper + haze: phone slide (Figma 1:356) */
+  #gl { left: 0; top: 0; width: 1920px; height: 1080px; touch-action: none; opacity: 0; transition: opacity .8s ease-out; }
+  .ready #gl { opacity: 1; }
+  #gl.mirror { transform: scaleX(-1); }   /* slide 3 framing; deck.js flips it while the camera is over the label */
+
+  /* slide text: rises in from below, slides up and out when you move on (staggered, top line first) */
+  .slide { position: absolute; inset: 0; pointer-events: none; }
+  .still, .still * { transition: none !important; }   /* first paint: everything already in place, no fade-in */
+  .slide > .abs { opacity: 0; transform: translateY(48px); transition: opacity .9s cubic-bezier(.33,0,.2,1), transform 1.2s cubic-bezier(.33,0,.2,1); }
+  .slide.on > .abs { opacity: 1; transform: none; transition-delay: calc(var(--in, .5s) + var(--d, 0s)); }   /* --in: wait for the camera to land (set by deck.js) */
+  .slide.out > .abs { opacity: 0; transform: translateY(-72px); transition: opacity .32s cubic-bezier(.5,0,.75,0), transform .42s cubic-bezier(.55,0,.45,1); transition-delay: calc(var(--d, 0s) * .5); }
+  .slide.on .hit { pointer-events: auto; }
+
+  /* slide 1 (screenshot mock 2026-11-12), on the 12-column grid: 64 px margins, 24 px gutters, column k starts at 64 + k * 151.33
+     col 7 = 1123.3 (meta, title)   col 9 = 1426 (lede and bullets, stacked)   right edge = 1856 */
+  .meta { --d: 0s; left: 1123.3px; top: 122px; margin: 0; font-size: 30px; line-height: .99; letter-spacing: -0.03em; }
+  .title { --d: .06s; left: 1117.3px; top: 348px; width: 739px; margin: 0; font-size: 100px; line-height: .99; letter-spacing: -0.03em; font-weight: 400; }   /* -6 px: optical edge of the R */
+  .title { white-space: nowrap; } .title b { font-weight: 600; }
+  .lede { --d: .12s; left: 1426px; top: 716px; margin: 0; font-size: 32px; line-height: .99; letter-spacing: -0.03em; }
+  .points { --d: .16s; left: 1426px; top: 802px; margin: 0; padding: 0 0 0 30px; list-style: none; font-size: 32px; line-height: 1.18; letter-spacing: -0.03em; }
+  .points li { position: relative; }
+  .points li::before { content: "•"; position: absolute; left: -30px; }   /* bullet on the lede's edge, text indented */
+  /* slide nav: bottom right on the grid (right edge 1856), above the light leaks */
+  #nav { position: absolute; right: 64px; bottom: 44px; z-index: 6; display: flex; align-items: center; gap: 6px; font: 400 18px/1 var(--sans); letter-spacing: -0.03em; color: var(--ink); }
+  #nav button { all: unset; cursor: pointer; padding: 8px 6px; opacity: .38; transition: opacity .25s ease; position: relative; }
+  #nav button:hover { opacity: .8; }
+  #nav button[aria-current="true"] { opacity: 1; }
+  #nav button[aria-current="true"]::after { content: ""; position: absolute; left: 6px; right: 6px; bottom: 2px; height: 1px; background: currentColor; }
+  #nav .arrow { padding: 8px 10px; font-size: 20px; }
+  #nav .arrow:disabled { opacity: .15; cursor: default; }
+  #nav button[hidden] { display: none; }   /* only three slide numbers show at a time; ‹ › move through the rest */
+  #nav button:focus-visible { outline: 1px solid rgba(255,255,255,.5); outline-offset: 2px; }
+  /* "01 Identify the fan" (Figma 1:356 styling): number Light, words Medium, second line hangs under "Identify".
+     One element shared by slides 3 and 4, so it stays put while the camera pans between them. Title on col 7. */
+  #step { left: 1117.3px; top: 399px; margin: 0; font-size: 100px; line-height: .99; letter-spacing: -0.03em; white-space: nowrap; z-index: 2; display: flex; align-items: flex-start; gap: .26em;
+    opacity: 0; transform: translateY(48px); transition: opacity .9s cubic-bezier(.33,0,.2,1), transform 1.2s cubic-bezier(.33,0,.2,1); pointer-events: none; }
+  #step .n { font-weight: 300; } #step .w { font-weight: 500; }
+  #stage[data-slide="play"] #step, #stage[data-slide="phone"] #step { opacity: 1; transform: none; transition-delay: var(--in, .5s); }
+  #stage:not([data-slide="play"]):not([data-slide="phone"]) #step { transform: translateY(-72px); transition: opacity .32s cubic-bezier(.5,0,.75,0), transform .42s cubic-bezier(.55,0,.45,1); }
+  /* slide 4: the phone, as in Figma 1:356 (bleeds off the bottom) */
+  /* the phone (Figma 1:413) is one element shared by slides 4 and 5: on 5 it zooms so its three service rows land exactly on
+     the cards (rows at 144.3, 639.8 in the group, 446.3 wide -> cards at 157, 281.5, 670 wide: scale 1.5), then hands over */
+  #phone { left: 245px; top: 97px; width: 661.1px; height: 1273.4px; transform-origin: 0 0; pointer-events: none; z-index: 1; will-change: transform; backface-visibility: hidden;   /* 4x image: stays sharp at 1.5x */
+    opacity: 0; transform: translateY(48px); transition: opacity .9s cubic-bezier(.33,0,.2,1), transform 1.2s cubic-bezier(.33,0,.2,1); }
+  #stage[data-slide="phone"] #phone { opacity: 1; transform: none; transition-delay: var(--in, .5s); }
+  #stage[data-slide="phone"][data-prev="connect"] #phone { transition: transform 1.3s cubic-bezier(.65,0,.35,1), opacity .2s ease; transition-delay: 0s; }
+  #stage[data-slide="connect"] #phone { opacity: 1; transform: translate(-304.62px, -775.97px) scale(1.5012);   /* stays: the live cards sit on its rows */
+    transition: transform 1.3s cubic-bezier(.65,0,.35,1), opacity .2s ease; }
+  #stage:not([data-slide="phone"]):not([data-slide="connect"]) #phone { transform: translateY(-72px); transition: opacity .32s cubic-bezier(.5,0,.75,0), transform .42s cubic-bezier(.55,0,.45,1); }
+  /* slide 5 (Figma 1:88): connect cards on cols 1–6, copy on col 7; a simulator touch dot taps each Connect */
+  .card { left: 157px; width: 670px; height: 156.7px; border-radius: 30.3px; background: rgb(26,26,28); border: 1px solid rgba(245,245,245,.05);
+    display: flex; align-items: center; gap: 26.5px; padding: 0 30.3px; font-family: Satoshi, var(--sans); }   /* same face and metrics as the phone's rows, so the hand-off doesn't jump */   /* the phone's own rows at x1.5, card column on Figma's left edge (157) */
+  .card:nth-of-type(1) { top: 281.5px; } .card:nth-of-type(2) { top: 461.7px; } .card:nth-of-type(3) { top: 641.9px; }
+  .slide[data-cam="connect"] { z-index: 2; }   /* live cards above the (z-index 1) phone image they sit on */
+  .slide[data-cam="connect"] > .card { transform: none; opacity: 0; transition: opacity .3s ease; transition-delay: 0s; will-change: opacity; }
+  .slide.on[data-cam="connect"] > .card { opacity: 1; transition-delay: 1.3s; transition-duration: .2s; }   /* only once the zoom has landed */
+  .card .logo { width: 91px; height: 91px; flex: none; display: block; }
+  .card .txt { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+  .card .nm { font-size: 32.2px; font-weight: 500; letter-spacing: -0.02em; line-height: 1.1; }
+  .card .sub { font-size: 24.6px; letter-spacing: 0; color: rgba(245,245,245,.45); line-height: 1.2; transition: color .3s ease; }
+  .card .btn { flex: none; width: 165px; height: 72.8px; border-radius: 999px; border: 1.5px solid rgba(245,245,245,.3); display: grid; place-items: center;
+    font-size: 26.5px; font-weight: 500; letter-spacing: -0.02em; position: relative; overflow: hidden;
+    transition: background .35s ease, color .35s ease, border-color .35s ease, transform .15s ease, width .45s cubic-bezier(.65,0,.35,1); }
+  .card .btn span { position: absolute; inset: 0; display: grid; place-items: center; white-space: nowrap;   /* each state fills the pill, so the check centres when it shrinks */ transition: opacity .25s ease, transform .35s cubic-bezier(.3,1.4,.5,1); }
+  .card .btn .b1 { opacity: 1; } .card .btn .b2, .card .btn .b3 { opacity: 0; transform: translateY(14px); }
+  .card .btn .spin { display: block; width: 26px; height: 26px; border-radius: 50%; border: 2.5px solid rgba(245,245,245,.25); border-top-color: #f5f5f5; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .card.press .btn { transform: scale(.94); background: rgba(245,245,245,.08); }
+  .card.busy .btn .b1 { opacity: 0; transform: translateY(-14px); } .card.busy .btn .b2 { opacity: 1; transform: none; }
+  .card.done .btn { width: 72.8px; background: #f5f5f5; border-color: #f5f5f5; color: #0d0d0e; }   /* pill collapses to a white check */
+  .card.done .btn .b1, .card.done .btn .b2 { opacity: 0; transform: translateY(-14px); } .card.done .btn .b3 { opacity: 1; transform: none; }
+  .card.done .sub { color: rgba(245,245,245,.8); }
+  .copy { --d: .2s; left: 1198px; top: 414px; margin: 0; font-size: 48px; line-height: 1.18; letter-spacing: -0.03em; white-space: nowrap; }
+  /* slide 5: soften the whole desk behind the cards */
+  #soften { left: 0; top: 0; width: 1920px; height: 1080px; pointer-events: none; opacity: 0; transition: opacity 1s ease;
+    -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); background: rgba(0,0,0,.12); }
+  #stage[data-slide="connect"] #soften { opacity: 1; }
+  /* the touch dot (iOS simulator style) */
+  #touch { position: absolute; left: -30px; top: -30px; width: 60px; height: 60px; z-index: 7; pointer-events: none; opacity: 0; will-change: transform, opacity; transition: opacity .3s ease; }
+  #touch i { position: absolute; inset: 0; border-radius: 50%; background: rgba(255,255,255,.55); box-shadow: inset 0 0 0 2px rgba(255,255,255,.7), 0 4px 16px rgba(0,0,0,.4);
+    transition: transform .14s cubic-bezier(.3,0,.3,1), background .14s ease; }
+  #touch.down i { transform: scale(.8); background: rgba(255,255,255,.75); }
+  html.scene .slide > *, html.scene #nav, html.scene #step { display: none !important; }
+</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Host+Grotesk:wght@400;500&display=swap">
+<link rel="stylesheet" href="src/story.css">
+</head>
+<body>
+<div id="stage" class="still">
+  <div id="frost" class="abs"></div>
+  <canvas id="gl" class="abs"></canvas>
+  <div id="dim" class="abs"></div>
+  <div id="corner" class="abs"></div>
+  <div id="haze" class="abs"></div>
+  <div id="soften" class="abs"></div>
+
+  <!-- 1: their logo on the label, straight down; → pans across to the nameplate -->
+  <section class="slide on" data-cam="logo"></section>
+
+  <!-- 2: the Republic Labs nameplate on the deck (label.js drawLabsCard), nothing selected -->
+  <section class="slide" data-cam="labs"></section>
+  <!-- 3: the camera settles over the record; the agenda is printed on the label (label.js drawAgendaLabel) -->
+  <section class="slide" data-cam="agenda"></section>
+
+  <section class="slide" data-cam="cover">
+    <p class="abs meta hit">2027–2030<br>Monetize audiences</p>
+    <h1 class="abs title hit"><b>REPUBLIC Labs</b>:<br>Reinventing the<br>Fan Relationship</h1>
+    <p class="abs lede hit">Building a<br>system that:</p>
+    <ul class="abs points hit">
+      <li>rewards engagement</li>
+      <li>deepens fan relationships</li>
+      <li>compounds revenue.</li>
+    </ul>
+  </section>
+
+  <!-- 3 (new): the problem. Same camera as the cover, scene dimmed; a ticket queue falls over, resale takes the rest -->
+  <section class="slide story" data-cam="problem">
+    <div class="abs win real">
+      <div class="cr-tabs"><span class="tl"><i></i><i></i><i></i></span>
+        <div class="cr-tab"><span class="fav">t</span><span class="tt">Olivia Dean: The Art of Loving Tour &ndash; Queue</span><span class="x">&times;</span></div>
+        <span class="plus">+</span></div>
+      <div class="cr-bar">
+        <span class="b"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#474747" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></span><span class="b dim"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#474747" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span><span class="b"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#474747" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 4v5h-5"/></svg></span>
+        <div class="omni"><span class="tune"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#474747" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></span><span class="u"><b>queue.ticketsite.com</b>/?c=oliviadean-presale&amp;e=tsrd26&amp;cid=en-us&amp;t=https%3A%2F%2Fticketsite.com</span><span class="star"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#474747" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/></svg></span></div>
+        <span class="b"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#474747" stroke-width="1.7" stroke-linejoin="round"><path d="M20.5 11H19V7c0-1.1-.9-2-2-2h-4V3.5a2.5 2.5 0 0 0-5 0V5H4a2 2 0 0 0-2 2v3.8h1.5a2.7 2.7 0 0 1 0 5.4H2V20a2 2 0 0 0 2 2h3.8v-1.5a2.7 2.7 0 0 1 5.4 0V22H17a2 2 0 0 0 2-2v-4h1.5a2.5 2.5 0 0 0 0-5z"/></svg></span><span class="av">M</span><span class="b"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#474747" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></span></div>
+      <div class="q">
+        <div class="hero"><img src="assets/od-apollo.jpg" alt="Olivia Dean performing at Eventim Apollo, London">
+          <div class="evt"><b>Olivia Dean: The Art of Loving Tour</b><span>Sat &bull; Jun 13, 2026 &bull; 7:30 pm</span><span>Madison Square Garden &bull; New York</span></div>
+          <div class="steps"><div class="track"><i></i></div>
+            <span class="s done" style="left:0%">The Lobby</span><span class="s done" style="left:33.3%">Waiting Room</span><span class="s on" style="left:66.6%">Queue</span><span class="s" style="left:100%">Shop for Tickets</span></div></div>
+        <div class="qcard">
+          <div class="h">You&rsquo;re in the queue</div>
+          <p class="sub">When it&rsquo;s your turn, you&rsquo;ll have 10 minutes to choose your tickets. Don&rsquo;t refresh this page or you&rsquo;ll lose your place.</p>
+          <div class="num"><span class="qn">48,213</span></div>
+          <div class="lbl">People ahead of you</div>
+          <div class="bar"><i></i></div>
+          <div class="eta2">Your estimated wait time is <b>more than an hour</b></div>
+          <div class="qid">Queue ID: B5E5C8C4-DEEF-4078-9ED4-37BC4FE9A445</div>
+        </div>
+        <div class="err"><div><div class="ic">!</div><b>Sorry, something went wrong.</b><span>We couldn&rsquo;t complete your request. Please try again later.</span><code>Error code: 0x80A1 &middot; Ref 4F2-9C1</code></div></div>
+        <div class="sold"><div><b>Tickets are no longer available.</b><span>All presale tickets for this event have been sold. Check back later, or look for tickets on resale.</span><div class="btn">See resale tickets</div></div></div>
+      </div></div>
+    <p class="abs kick">The problem</p>
+    <h2 class="abs big">100,000 fans.<br><span>20,000 seats.</span></h2>
+    <p class="abs prob">Bots and scalpers get in first. Tickets resell for thousands. The fans who were there from <em>day one</em> get locked out.</p>
+  </section>
+
+
+
+  <!-- 4: the camera slides off the record onto the desk paper; frosted paper + haze return, the phone rises in -->
+  <!-- 3: pull back to the whole deck, the arm drops onto the lead-in, the camera goes down to the needle as it starts to play -->
+  <section class="slide" data-cam="play"></section>
+
+  <!-- 4 -> 5 play as one beat: the phone rises in, holds, then zooms into the connect cards on its own (data-auto) -->
+  <section class="slide" data-cam="phone" data-auto="1.2"></section>
+  <img id="phone" class="abs" src="assets/phone-connect.png" alt="Connect your streaming: Spotify, Apple Music, YouTube Music">
+  <!-- 5: same desk; cards rise in and a touch dot connects each service (Figma 1:88) -->
+  <section class="slide" data-cam="connect">
+    <div class="abs card"><svg class="logo" viewBox="0 0 24 24"><circle cx="12" cy="12" r="12" fill="#1ED760"/><path fill="#000" d="M17.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg><div class="txt"><div class="nm">Spotify</div><div class="sub">Tap to connect</div></div>
+      <div class="btn"><span class="b1">Connect</span><span class="b2"><i class="spin"></i></span><span class="b3"><svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M5 12.5 10 17.5 19 7" stroke="#0d0d0e" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div></div>
+    <div class="abs card"><svg class="logo" viewBox="0 0 48 48"><defs><linearGradient id="am" x1="24" y1="0" x2="24" y2="48" gradientUnits="userSpaceOnUse"><stop stop-color="#FA586A"/><stop offset="1" stop-color="#FB233B"/></linearGradient></defs><rect width="48" height="48" rx="11" fill="url(#am)"/><path fill="#fff" d="M32.6 10.3c-.1 0-.4 0-.6.1l-11.9 2.4c-.9.2-1.5.9-1.5 1.8v14.6c0 .7-.3 1.1-1 1.3l-1.7.4c-2.1.5-3.1 1.6-3.1 3.2 0 1.8 1.4 3.1 3.3 3.1.6 0 1.1-.1 1.8-.2 2.3-.5 3.4-2 3.4-4.4V20.2c0-.6.2-.9.8-1l9.5-1.9c.5-.1.8.1.8.6v9.1c0 .7-.3 1.1-1 1.3l-1.7.4c-2.1.5-3.1 1.6-3.1 3.2 0 1.8 1.4 3.1 3.3 3.1.6 0 1.1-.1 1.8-.2 2.3-.5 3.4-2 3.4-4.4V11.7c0-.9-.5-1.4-1.3-1.4z"/></svg><div class="txt"><div class="nm">Apple Music</div><div class="sub">Tap to connect</div></div>
+      <div class="btn"><span class="b1">Connect</span><span class="b2"><i class="spin"></i></span><span class="b3"><svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M5 12.5 10 17.5 19 7" stroke="#0d0d0e" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div></div>
+    <div class="abs card"><svg class="logo" viewBox="0 0 48 48"><rect width="48" height="48" rx="11" fill="#fff"/><rect x="8" y="13.5" width="32" height="21" rx="6" fill="#FF0000"/><path fill="#fff" d="M21 19.2v9.6l8.3-4.8z"/></svg><div class="txt"><div class="nm">YouTube Music</div><div class="sub">Tap to connect</div></div>
+      <div class="btn"><span class="b1">Connect</span><span class="b2"><i class="spin"></i></span><span class="b3"><svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M5 12.5 10 17.5 19 7" stroke="#0d0d0e" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div></div>
+    <p class="abs copy">Connect consented CRM,<br>commerce, live and permitted<br>streaming signals into one<br><span style="white-space:nowrap">artist-specific</span> fan profile.</p>
+  </section>
+
+  <!-- ===== the fan story (src/story.css, src/story.js). Desk slides reuse the phone camera; section titles get their own shots ===== -->
+  <!-- 6: Maya is recognised on oliviadean.com: her history comes back without her proving anything -->
+  <section class="slide story" data-cam="recognize">
+    <div class="abs web" data-url="oliviadean.com/fanclub"><div class="body">
+      <div class="h1">Welcome back, Maya.</div>
+      <p class="sub2">We matched your email to your history with Olivia.</p>
+      <div class="row rv"><div class="ic"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#e8bf6a" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3l2.6 5.6 6 .7-4.5 4 1.3 6L12 16.3 6.6 19.3l1.3-6-4.5-4 6-.7z"/></svg></div><div class="t"><b>Fan since 2019</b><small>First stream, before the debut album</small></div><div class="ok"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M5 12.5 10 17.5 19 7" stroke="#0d0d0e" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div></div>
+      <div class="row rv"><div class="ic"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f5f5f5" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 7h12l-1 13H7L6 7z"/><path d="M9 7a3 3 0 0 1 6 0"/></svg></div><div class="t"><b>Official store</b><small>3 orders · since 2021</small></div><div class="ok"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M5 12.5 10 17.5 19 7" stroke="#0d0d0e" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div></div>
+      <div class="row rv"><div class="ic"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f5f5f5" stroke-width="1.8" stroke-linejoin="round"><path d="M3 7h18v3a2 2 0 0 0 0 4v3H3v-3a2 2 0 0 0 0-4z"/><path d="M15 7v10" stroke-dasharray="2 2"/></svg></div><div class="t"><b>Live</b><small>2 shows · verified ticket scans</small></div><div class="ok"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M5 12.5 10 17.5 19 7" stroke="#0d0d0e" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div></div>
+      <div class="row rv"><div class="ic"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f5f5f5" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="5"/><circle cx="12" cy="12" r="3.6"/><circle cx="17" cy="7" r=".9" fill="#f5f5f5"/></svg></div><div class="t"><b>Fan account</b><small>@deanie.daily · 12.4k followers</small></div><div class="ok"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M5 12.5 10 17.5 19 7" stroke="#0d0d0e" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div></div>
+      <div class="row rv"><div class="ic"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f5f5f5" stroke-width="1.8" stroke-linecap="round"><path d="M4 15v-3a8 8 0 0 1 16 0v3"/><rect x="3" y="14" width="4" height="6" rx="1.5"/><rect x="17" y="14" width="4" height="6" rx="1.5"/></svg></div><div class="t"><b>Streaming</b><small>1,284 hours · Spotify, Apple Music</small></div><div class="ok"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M5 12.5 10 17.5 19 7" stroke="#0d0d0e" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div></div>
+      <div class="cta rv">Create my fan profile</div>
+    </div></div>
+    <p class="abs kick">01 Identify the fan</p>
+    <p class="abs say">Every touchpoint,<br>one fan.</p>
+    <p class="abs note">Store orders, ticket scans, socials and streams resolve into one <span style="white-space:nowrap">artist-specific</span> profile.<br><b>Maya never has to prove she's a fan.</b></p>
+  </section>
+
+  <!-- 7: 02 Gamify loyalty (section title, its own shot of the record) -->
+  <section class="slide story" data-cam="gamify"><h2 class="abs stephead"><span class="n">02</span><span class="w">Gamify<br>loyalty</span></h2></section>
+
+  <!-- 8: everything Maya does earns points; she crosses into Tier 01 -->
+  <section class="slide story" data-cam="points">
+    <div class="abs web" data-url="oliviadean.com/fanclub/me"><div class="body">
+      <div class="me"><div class="av">M</div><div><b>@deanie.daily</b><small>Olivia Dean fan · since 2019</small></div></div>
+      <div class="toast"><span class="app">OD</span><div class="msg"><div class="hd"><b>OLIVIA DEAN</b><span>now</span></div><b>You&rsquo;re a Superfan.</b><small>Tier 01 unlocked: presales open first for you.</small></div></div>
+      <div class="tier"><div class="top"><span class="nm">Tier 02 · Engaged</span><span class="pts"><b class="ptn">7,420</b> / 10,000</span></div>
+        <div class="track"><i></i></div><div class="steps"><span>Tier 03 · Loyal</span><span>Tier 02 · Engaged</span><span>Tier 01 · Superfan</span></div></div>
+      <div class="feed">
+        <div class="row rv" data-add="240"><div class="ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#f5f5f5" stroke-width="1.8" stroke-linecap="round"><path d="M4 15v-3a8 8 0 0 1 16 0v3"/><rect x="3" y="14" width="4" height="6" rx="1.5"/><rect x="17" y="14" width="4" height="6" rx="1.5"/></svg></div><div class="t"><b>Streamed The Art of Loving</b><small>42 plays this week</small></div><span class="plus">+240</span></div>
+        <div class="row rv" data-add="600"><div class="ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#f5f5f5" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="5"/><circle cx="12" cy="12" r="3.6"/><circle cx="17" cy="7" r=".9" fill="#f5f5f5"/></svg></div><div class="t"><b>Fan edit on @deanie.daily</b><small>18.2k views · verified</small></div><span class="plus">+600</span></div>
+        <div class="row rv" data-add="450"><div class="ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#f5f5f5" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.6"/></svg></div><div class="t"><b>Pre-ordered tour vinyl</b><small>Official store</small></div><span class="plus">+450</span></div>
+        <div class="row rv" data-add="1200"><div class="ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#f5f5f5" stroke-width="1.8" stroke-linejoin="round"><path d="M3 7h18v3a2 2 0 0 0 0 4v3H3v-3a2 2 0 0 0 0-4z"/><path d="M15 7v10" stroke-dasharray="2 2"/></svg></div><div class="t"><b>Checked in at the show</b><small>Verified ticket scan</small></div><span class="plus">+1,200</span></div>
+        <div class="row rv" data-add="300"><div class="ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#f5f5f5" stroke-width="1.8" stroke-linecap="round"><circle cx="9" cy="9" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M17 8v6M14 11h6"/></svg></div><div class="t"><b>Brought 3 friends into the club</b><small>Referral</small></div><span class="plus">+300</span></div>
+      </div>
+    </div></div>
+    <p class="abs kick">02 Gamify loyalty</p>
+    <p class="abs say">Loyalty you<br>can see.</p>
+    <p class="abs note">Recognize longevity, verified participation and purchasing. <b>Give fans visible progress across <span style="white-space:nowrap">artist-defined</span> tiers.</b></p>
+  </section>
+
+  <!-- 9: 03 Unlock & re-engage (section title) -->
+  <section class="slide story" data-cam="unlock"><h2 class="abs stephead"><span class="n">03</span><span class="w">Unlock &amp;<br>re-engage</span></h2></section>
+
+  <!-- 10: Tier 01 opens the presale before the queue from slide 3; Maya is in -->
+  <section class="slide story" data-cam="presale">
+    <div class="abs web" data-url="oliviadean.com/tour"><div class="body">
+      <div class="queue"><span>General sale · <b>48,213 ahead</b></span><span class="ok2">Skipped the queue</span></div>
+      <div class="ticket"><div class="art"><span class="pill">Superfan presale · Tier 01 only</span><b>The Art of Loving<br>Tour</b></div>
+        <div class="info"><p>Opens <b>48 hours</b> before general sale. Verified fans only, so bots can't get in.</p>
+          <div class="cta"><span class="s1">Get tickets</span><span class="s2"><i class="spin"></i></span><span class="s3">You're in · 2 × Floor</span></div></div></div>
+      <div class="perks">
+        <div class="row"><div class="ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#f5f5f5" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg></div><div class="t"><b>Early listen</b><small>Unreleased demo, 1 week early</small></div><span class="lock" data-closed="Tier 01">Tier 01</span></div>
+        <div class="row"><div class="ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#f5f5f5" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.6"/></svg></div><div class="t"><b>Signed vinyl drop</b><small>500 copies · Superfans only</small></div><span class="lock" data-closed="Tier 01">Tier 01</span></div>
+      </div>
+      <!-- digital ticket: boarding-pass layout (Nov 13 reference), slides up once she's in -->
+      <div class="pass">
+        <div class="top"><span class="od">OLIVIA DEAN</span><span class="code">TAOL 0613<br>Sat 13 Jun 2026</span></div>
+        <div class="who"><div><small>Fan</small><b>Maya Reyes</b></div><div class="r"><small>Tier</small><b>Superfan 01</b></div></div>
+        <div class="route"><div><small>New York</small><b>NYC</b></div><div class="line"><i></i><svg width="22" height="22" viewBox="0 0 24 24" fill="#1a0d05"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg><i></i></div><div class="r"><small>Madison Sq. Garden</small><b>MSG</b></div></div>
+        <div class="grid"><div><small>Doors</small><b>6:30 PM</b></div><div><small>Show</small><b>8:00 PM</b></div><div class="r"><small>Gate</small><b>4</b></div></div>
+        <div class="tear"></div>
+        <div class="stub"><div class="qr"></div>
+          <div class="seat"><div><small>Section</small><b>Floor</b></div><div class="zone"><small>Row</small><b>A</b></div><div><small>Seats</small><b>14 – 15</b></div><div><small>Order</small><b>R7K2Q9</b></div></div></div>
+        <div class="wallet"><svg width="20" height="20" viewBox="0 0 24 24" fill="#fff"><rect x="2" y="5" width="20" height="15" rx="3" fill="none" stroke="#fff" stroke-width="2"/><rect x="2" y="9" width="20" height="3"/></svg>Add to Apple Wallet</div>
+      </div>
+    </div></div>
+    <p class="abs kick">03 Unlock &amp; re-engage</p>
+    <p class="abs say">Status unlocks<br>access.</p>
+    <p class="abs note">Reward status with music, ticket access, merchandise and experiences. <b>The fans who've been there longest get in first.</b></p>
+  </section>
+
+  <!-- 11: the leaderboard: everything Maya did, in one rank -->
+  <section class="slide story" data-cam="board">
+    <div class="abs win real tierbrowser">
+      <div class="cr-tabs"><span class="tl"><i></i><i></i><i></i></span>
+        <div class="cr-tab"><span class="fav od">OD</span><span class="tt">Olivia Dean &ndash; Fan club leaderboard</span><span class="x">&times;</span></div>
+        <span class="plus">+</span></div>
+      <div class="cr-bar">
+        <span class="b"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#474747" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></span><span class="b dim"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#474747" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span><span class="b"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#474747" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 4v5h-5"/></svg></span>
+        <div class="omni"><span class="tune"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#474747" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></span><span class="u"><b>oliviadean.com</b>/fanclub/leaderboard</span><span class="star"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#474747" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/></svg></span></div>
+        <span class="b"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#474747" stroke-width="1.7" stroke-linejoin="round"><path d="M20.5 11H19V7c0-1.1-.9-2-2-2h-4V3.5a2.5 2.5 0 0 0-5 0V5H4a2 2 0 0 0-2 2v3.8h1.5a2.7 2.7 0 0 1 0 5.4H2V20a2 2 0 0 0 2 2h3.8v-1.5a2.7 2.7 0 0 1 5.4 0V22H17a2 2 0 0 0 2-2v-4h1.5a2.5 2.5 0 0 0 0-5z"/></svg></span><span class="av">M</span><span class="b"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#474747" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></span></div>
+      <div class="odsite"><span class="wm">OLIVIA DEAN</span><span class="menu">Menu</span></div>
+      <div class="tierwin clean">
+      <img class="sq" src="assets/od-square.jpg" alt="Olivia Dean">
+      <div class="ttl">Olivia Dean</div>
+      <div class="lines"><span>You&rsquo;re Tier 2 &middot; top 5% of Olivia fans</span><b>Fan since 2019 &middot; Rank <b class="mrk">#4,812</b></b></div>
+      <div class="by">Ranked by <u>all actions</u> &#8964;</div>
+      <div class="tbl"><div class="th"><span>FAN</span><span>SINCE</span><span>CONTENT</span><span>MERCH</span><span>SHOWS</span><span class="sc">SCORE</span></div>
+        <div class="tr rv"><span class="u">#1 @deanosupreme</span><span>2018</span><span>280k</span><span>14</span><span>6</span><span class="sc">48,920</span></div><div class="tr rv"><span class="u">#2 @nicetoeachother23</span><span>2018</span><span>266k</span><span>9</span><span>5</span><span class="sc">46,310</span></div><div class="tr rv"><span class="u">#3 @vinylcollector</span><span>2019</span><span>41k</span><span>31</span><span>4</span><span class="sc">44,780</span></div>
+        <div class="more rv"><i>. . . . . . . . .</i></div>
+        <div class="tr you2 rv"><span class="u"><b class="mrk">#4,812</b> @deanie.daily</span><span>2019</span><span>12.4k</span><span>3</span><span>2</span><span class="sc">10,210</span></div>
+      </div>
+      <div class="mix rv">
+        <div class="bar"><i class="a" style="--w:31%"><b>Longevity</b><small>+3,200</small></i><i class="b" style="--w:27%"><b>Content</b><small>+2,800</small></i><i class="c" style="--w:15%"><b>Merch</b><small>+1,450</small></i><i class="d" style="--w:27%"><b>Shows</b><small>+2,760</small></i></div></div>
+    </div>
+    </div>
+    <p class="abs kick">One fan, one relationship</p>
+    <p class="abs say">Every action,<br>one rank.</p>
+    <p class="abs note">Longevity, content, merch and shows add up to one picture of Maya's <b>cultural and commercial value to Olivia.</b></p>
+  </section>
+
+
+  <!-- 13: 04 Compound: the flywheel, and the line to end on -->
+  <section class="slide story" data-cam="compound">
+    <h2 class="abs stephead"><span class="n">04</span><span class="w">Compound</span></h2>
+    <p class="abs loop"><span>Engagement</span><span class="ar">→</span><span>Status</span><span class="ar">→</span><span>Access</span><span class="ar">→</span><br><span>Commerce</span><span class="ar">→</span><span>More engagement</span></p>
+    <p class="abs end"><b>From day one to front row.</b> Every fan, recognized.</p>
+  </section>
+  <div id="touch"><i></i></div>
+  <div id="tap"><i></i></div>
+  <h2 id="step" class="abs"><span class="n">01</span><span class="w">Identify<br>the fan</span></h2>
+  <img id="leak" class="abs" src="assets/leaks-slide1.png" alt="">
+  <nav id="nav" aria-label="Slides"></nav>
+</div>
+<script type="module" src="src/deck.js"></script>
+</body>
+</html>
